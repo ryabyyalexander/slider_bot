@@ -61,7 +61,7 @@ async def toggle_expand(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(F.text == "/slider")
+@router.message(F.text == "/start")
 async def start_slideshow(message: Message, state: FSMContext):
     user_id = int(message.from_user.id)
     first_name = message.from_user.first_name
@@ -270,7 +270,6 @@ async def handle_add_photo_command(message: Message):
         return
 
     photo_id = message.photo[-1].file_id
-    print((photo_id))
     caption = message.caption
 
     try:
@@ -299,8 +298,10 @@ async def handle_my_photos(message: Message):
             caption=f"ID: {photo[0]}"  # id фото
         )
 
+    await message.delete()
 
-@router.message(F.text.startswith('/deletephoto'), IsAdmin(admins))
+
+@router.message(Command('/deletephoto'), IsAdmin(admins))
 async def handle_delete_photo(message: Message):
     try:
         photo_id = int(message.text.split()[1])
@@ -321,6 +322,7 @@ async def handle_photo_stats(message: Message):
     count = data_users.get_photo_count()
     msg = await message.answer(f"📊 У базі знаходиться {count} фотографій.")
     await del_msg(msg, 5)
+    await message.delete()
 
 
 @router.message(F.photo, IsAdmin(admins))
