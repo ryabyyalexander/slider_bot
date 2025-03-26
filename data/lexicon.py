@@ -28,7 +28,7 @@ PHOTO_LIST = [
 ]
 
 CYCLE_OPTIONS = [3, 4, 5, 7, 10, 33]
-CYCLE_DEFAULT = 12
+CYCLE_DEFAULT = 11
 SPEED_OPTIONS = [2, 3, 4, 7]
 star = ['☆', '★']
 

@@ -84,8 +84,8 @@ async def start_slideshow(message: Message, state: FSMContext):
 
     photo_list = await get_photo_list()
     if not photo_list:
-        msg = await message.answer("❌ Немає доступних фотографій. Додайте фото командою /addphoto")
-        await del_msg(msg, 2)
+        msg = await message.answer("❌ Немає доступних фотографій. Додайте фото.")
+        await del_msg(msg, 5)
         return
 
     index = 0

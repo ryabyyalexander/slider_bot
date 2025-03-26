@@ -72,7 +72,7 @@ class BotDatabase:
 
 
 # Инициализация базы данных и создание таблиц
-data_users = BotDatabase('slider.db')
+data_users = BotDatabase('data_slider')
 
 data_users.execute_query("""CREATE TABLE IF NOT EXISTS users(
     user_id INT PRIMARY KEY,
