@@ -90,11 +90,11 @@ async def start_slideshow(message: Message, state: FSMContext):
 
     index = 0
     photo_id = photo_list[index]
-    caption = f'{data_time()} \n'
+    # Удаляем старую строку с caption, так как теперь она формируется в update_photo
 
     msg = await message.answer_photo(
         photo=photo_id,
-        caption=caption,
+        caption="Загрузка...",  # Временная подпись
         reply_markup=get_keyboard(expanded=False, index=index, total=len(photo_list))
     )
 
@@ -107,9 +107,11 @@ async def start_slideshow(message: Message, state: FSMContext):
         cycle_length=CYCLE_DEFAULT,
         expanded=False,
         photo_list=photo_list,
-        speed=3  # Добавлено значение по умолчанию для скорости
+        speed=3
     )
     await asyncio.sleep(3)
+    # Обновляем фото с полной информацией
+    await update_photo(message.chat.id, msg.message_id, index, state)
     await asyncio.create_task(autoplay_slideshow(message.chat.id, state))
 
 
@@ -120,7 +122,25 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
         return
 
     photo_id = photo_list[index]
-    caption = f'{data_time()} \n'
+
+    # Получаем полную информацию о фото из базы данных
+    photo_info = data_users.execute_query("""
+        SELECT p.id, p.added_date, p.caption, 
+               u.user_name, u.first_name, u.last_name 
+        FROM photos p
+        JOIN users u ON p.added_by = u.user_id
+        WHERE p.file_id = ?
+    """, (photo_id,)).fetchone()
+
+    # Формируем подпись с полной информацией
+    caption = (
+        f"🆔     {photo_info[0]}\n"
+        f"📅     {photo_info[1]}\n"
+        f"👤     {photo_info[3] or photo_info[4] or photo_info[5]}\n"
+        f"📝     {photo_info[2] if photo_info[2] else 'нет'}\n"
+        f"🕒     {data_time()}"
+    )
+
     try:
         await bot.edit_message_media(
             chat_id=chat_id,
