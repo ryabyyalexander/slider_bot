@@ -1,9 +1,12 @@
 import asyncio
 from datetime import datetime
+from random import shuffle
+
 import requests
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from data import bot
+from sql import data_users
 
 
 async def del_msg(message: Message, delay: int):
@@ -69,3 +72,12 @@ def get_usd_exchange_rate():
 
     return data[0]['rate']
 
+
+async def get_photo_list():
+    """Получает список фото из базы и перемешивает его"""
+    photos = data_users.get_all_photos()
+    if not photos:
+        return None
+    photo_list = [p[0] for p in photos]
+    shuffle(photo_list)
+    return photo_list
