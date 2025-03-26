@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from data import bot, del_msg, admins, SPEED_OPTIONS, CYCLE_OPTIONS, CYCLE_DEFAULT
 from data.functions import data_time
-from filters import IsAdmin, is_admin
+from filters import IsAdmin
 from sql import data_users
 from states.states import SlideShowState
 
