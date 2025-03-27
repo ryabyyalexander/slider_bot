@@ -124,7 +124,7 @@ async def start_slideshow(message: Message, state: FSMContext):
     )
 
     # Не запускаем autoplay сразу, дадим пользователю время увидеть первую фото
-    await asyncio.sleep(3)  # Ждем 3 секунды перед началом автопрокрутки
+    await asyncio.sleep(2)  # Ждем 3 секунды перед началом автопрокрутки
     await update_photo(message.chat.id, msg.message_id, index, state)  # Обновляем для consistency
     await asyncio.create_task(autoplay_slideshow(message.chat.id, state))
 

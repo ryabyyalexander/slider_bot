@@ -8,7 +8,7 @@ MENU_COMMANDS: dict[str, str] = {
 }
 
 CYCLE_OPTIONS = [3, 4, 5, 7, 10, 33]
-CYCLE_DEFAULT = 7
+CYCLE_DEFAULT = 2
 SPEED_OPTIONS = [2, 3, 4, 7]
 star = ['☆', '★']
 
