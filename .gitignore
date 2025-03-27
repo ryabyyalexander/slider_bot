@@ -168,3 +168,4 @@ cython_debug/
 /.idea/vcs.xml
 /photos
 .db
+/data_slider.db
