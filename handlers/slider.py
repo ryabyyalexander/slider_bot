@@ -1,4 +1,4 @@
-# slider.py
+# "Рефакторинг слайд-шоу: разделение на модули"
 import asyncio
 from random import shuffle
 from aiogram import Router, F
