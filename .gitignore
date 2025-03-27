@@ -167,5 +167,4 @@ cython_debug/
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/vcs.xml
 /photos
-slider.db
-/slider.db.db
+.db

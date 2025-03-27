@@ -3,7 +3,6 @@ name_bot = 'slider'
 
 MENU_COMMANDS: dict[str, str] = {
     '/start': 'slider',
-    '/deletephoto': 'deletephoto + №',
     '/photostats': 'photostats',
     '/myphotos': 'myphotos',
 }

@@ -65,7 +65,8 @@ class BotDatabase:
         return self.execute_query("SELECT file_id FROM photos WHERE added_by = ?", (user_id,)).fetchall()
 
     def delete_photo(self, photo_id):
-        self.execute_query("DELETE FROM photos WHERE id = ?", (photo_id,))
+        cursor = self.execute_query("DELETE FROM photos WHERE id = ?", (photo_id,))
+        return cursor.rowcount > 0  # Возвращает True, если фото было удалено
 
     def get_photo_count(self):
         return self.execute_query("SELECT COUNT(*) FROM photos").fetchone()[0]

@@ -321,19 +321,48 @@ async def handle_my_photos(message: Message):
     await message.delete()
 
 
-@router.message(Command('/deletephoto'), IsAdmin(admins))
+@router.message(Command("del"), IsAdmin(admins))
 async def handle_delete_photo(message: Message):
+    # print('Команда /del получена')  Проверка получения команды
     try:
+        # Проверяем, что передан аргумент с ID фото
+        if len(message.text.split()) < 2:
+            msg = await message.answer("❌ Використання: /del <ID>")
+            await del_msg(msg, 2)
+            return
+
         photo_id = int(message.text.split()[1])
-        data_users.delete_photo(photo_id)
-        msg = await message.answer(f"✅ Фото {photo_id} видалено.")
+        # print(f'Пытаемся удалить фото с ID: {photo_id}')   Логирование ID
+
+        # Проверяем существование фото перед удалением
+        photo_exists = data_users.execute_query(
+            "SELECT 1 FROM photos WHERE id = ?",
+            (photo_id,)
+        ).fetchone()
+
+        if not photo_exists:
+            msg = await message.answer(f"❌ Фото з ID {photo_id} не знайдено.")
+            await del_msg(msg, 2)
+            return
+
+        # Удаляем фото
+        deleted = data_users.delete_photo(photo_id)
+        # print(f'Результат удаления: {deleted}')   Логирование результата
+
+        if deleted:
+            msg = await message.answer(f"✅ Фото {photo_id} успішно видалено.")
+        else:
+            msg = await message.answer(f"❌ Не вдалося видалити фото {photo_id}.")
+
         await del_msg(msg, 2)
         await message.delete()
-    except (IndexError, ValueError):
-        msg = await message.answer("❌ Використання: /deletephoto <ID>")
+
+    except ValueError:
+        msg = await message.answer("❌ ID фото має бути числом.")
         await del_msg(msg, 2)
     except Exception as e:
-        msg = await message.answer(f"❌ Помилка: {e}")
+        print(f'Ошибка при удалении фото: {str(e)}')  # Логирование ошибки
+        msg = await message.answer(f"❌ Помилка: {str(e)}")
         await del_msg(msg, 2)
 
 
