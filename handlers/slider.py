@@ -7,7 +7,6 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from data import bot, del_msg, admins, SPEED_OPTIONS, CYCLE_OPTIONS, CYCLE_DEFAULT
-from data.functions import data_time
 from filters import IsAdmin
 from sql import data_users
 from states.states import SlideShowState
@@ -40,13 +39,13 @@ def get_keyboard(paused=False, expanded=False, index=0, total=0):
         InlineKeyboardButton(text=f"{speed} сек", callback_data=f"setspeed_{speed}")
         for speed in SPEED_OPTIONS
     ]
-    close_button = [
+    arrow_button = [
         InlineKeyboardButton(text="←", callback_data="prev"),
         InlineKeyboardButton(text="→", callback_data="next")]
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[control_buttons])
     if expanded:
-        keyboard.inline_keyboard.extend([cycle_buttons, speed_buttons, close_button])
+        keyboard.inline_keyboard.extend([arrow_button, cycle_buttons, speed_buttons])
     return keyboard
 
 
@@ -90,11 +89,24 @@ async def start_slideshow(message: Message, state: FSMContext):
 
     index = 0
     photo_id = photo_list[index]
-    # Удаляем старую строку с caption, так как теперь она формируется в update_photo
+
+    # Получаем информацию о первой фотографии для caption
+    photo_info = data_users.execute_query("""
+        SELECT p.id, p.added_date, p.caption, 
+               u.user_name, u.first_name, u.last_name 
+        FROM photos p
+        JOIN users u ON p.added_by = u.user_id
+        WHERE p.file_id = ?
+    """, (photo_id,)).fetchone()
+
+    # Формируем подпись для первой фотографии
+    first_caption = (
+        f"🆔 {photo_info[0]}"
+    )
 
     msg = await message.answer_photo(
         photo=photo_id,
-        caption="Загрузка...",  # Временная подпись
+        caption=first_caption,
         reply_markup=get_keyboard(expanded=False, index=index, total=len(photo_list))
     )
 
@@ -102,16 +114,18 @@ async def start_slideshow(message: Message, state: FSMContext):
     await state.update_data(
         index=index,
         msg_id=msg.message_id,
-        playing=True,
+        playing=True,  # Оставляем playing=True, но не запускаем autoplay сразу
         cycle_count=0,
         cycle_length=CYCLE_DEFAULT,
         expanded=False,
         photo_list=photo_list,
-        speed=3
+        speed=3,
+        first_photo_shown=True  # Добавляем флаг, что первое фото показано
     )
-    await asyncio.sleep(3)
-    # Обновляем фото с полной информацией
-    await update_photo(message.chat.id, msg.message_id, index, state)
+
+    # Не запускаем autoplay сразу, дадим пользователю время увидеть первую фото
+    await asyncio.sleep(3)  # Ждем 3 секунды перед началом автопрокрутки
+    await update_photo(message.chat.id, msg.message_id, index, state)  # Обновляем для consistency
     await asyncio.create_task(autoplay_slideshow(message.chat.id, state))
 
 
@@ -134,11 +148,10 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
 
     # Формируем подпись с полной информацией
     caption = (
-        f"🆔     {photo_info[0]}\n"
-        f"📅     {photo_info[1]}\n"
-        f"👤     {photo_info[3] or photo_info[4] or photo_info[5]}\n"
-        f"📝     {photo_info[2] if photo_info[2] else 'нет'}\n"
-        f"🕒     {data_time()}"
+        f"🆔 {photo_info[0]}\n"
+        # f"📅     {photo_info[1]}\n"
+        # f"👤     {photo_info[3] or photo_info[4] or photo_info[5]}\n"
+        # f"{photo_info[2] if photo_info[2] else 'caption'}"
     )
 
     try:
@@ -153,6 +166,12 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
 
 
 async def autoplay_slideshow(chat_id: int, state: FSMContext):
+    data = await state.get_data()
+    # Если это первый запуск, пропускаем первый шаг (чтобы избежать мерцания)
+    if data.get("first_photo_shown", False):
+        await state.update_data(first_photo_shown=False)
+        await asyncio.sleep(data.get("speed", 3))  # Ждем полный интервал перед сменой
+
     while (await state.get_data()).get("playing", False):
         data = await state.get_data()
         photo_list = data.get("photo_list", [])
@@ -274,32 +293,6 @@ async def process_sl(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Повідомлення вже видалено або не знайдено.")
     await state.clear()
 
-############################################################
-###########################################################
-
-@router.message(Command("addphoto"))
-async def handle_add_photo_command(message: Message):
-    if not message.photo:
-        msg = await message.answer("❌ Будь ласка, відправте фото з підписом (необов'язково).")
-        await del_msg(msg, 2)
-        return
-
-    if not data_users.sql_user_exists(message.from_user.id):
-        msg = await message.answer("❌ Спочатку зареєструйтесь через /slider")
-        await del_msg(msg, 2)
-        return
-
-    photo_id = message.photo[-1].file_id
-    caption = message.caption
-
-    try:
-        data_users.add_photo(photo_id, message.from_user.id, caption)
-        msg = await message.answer("✅ Фото успішно додано до бази!")
-        await del_msg(msg, 2)
-    except Exception as e:
-        msg = await message.answer(f"❌ Помилка при додаванні фото: {e}")
-        await del_msg(msg, 2)
-
 
 @router.message(Command("myphotos"))
 async def handle_my_photos(message: Message):
@@ -323,7 +316,6 @@ async def handle_my_photos(message: Message):
 
 @router.message(Command("del"), IsAdmin(admins))
 async def handle_delete_photo(message: Message):
-    # print('Команда /del получена')  Проверка получения команды
     try:
         # Проверяем, что передан аргумент с ID фото
         if len(message.text.split()) < 2:
@@ -376,11 +368,6 @@ async def handle_photo_stats(message: Message):
 
 @router.message(F.photo, IsAdmin(admins))
 async def handle_any_photo(message: Message):
-    if not data_users.sql_user_exists(message.from_user.id):
-        msg = await message.answer("❌ Спочатку зареєструйтесь через /slider")
-        await del_msg(msg, 2)
-        return
-
     photo_id = message.photo[-1].file_id
     caption = message.caption
 
