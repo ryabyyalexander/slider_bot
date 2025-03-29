@@ -18,11 +18,11 @@ def get_keyboard(paused=False, expanded=False, index=0, total=0):
         InlineKeyboardButton(text=f"{speed} сек", callback_data=f"setspeed_{speed}")
         for speed in SPEED_OPTIONS
     ]
-    close_button = [
+    arrow_button = [
         InlineKeyboardButton(text="←", callback_data="prev"),
         InlineKeyboardButton(text="→", callback_data="next")]
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[control_buttons])
     if expanded:
-        keyboard.inline_keyboard.extend([cycle_buttons, speed_buttons, close_button])
+        keyboard.inline_keyboard.extend([arrow_button, cycle_buttons, speed_buttons])
     return keyboard
