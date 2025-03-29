@@ -1,6 +1,6 @@
 # **Telegram бот "Slider"**
 
-https://t.me/slide_me_bot
+[https://t.me/slide_me_bot](https://t.me/slide_me_bot)
 
 Цей бот являє собою мінімальний стартовий шаблон слайд-шоу для Telegram
 з різними налаштуваннями та функціями управління.
