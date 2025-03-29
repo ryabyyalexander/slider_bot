@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from data import bot, del_msg, admins, CYCLE_DEFAULT
 from keyboards import get_keyboard
-from sql import data_users
+from sql import data_base
 from states.states import SlideShowState
 
 router = Router()
@@ -15,7 +15,7 @@ router = Router()
 
 async def get_photo_list():
     """Получает список фото из базы и перемешивает его"""
-    photos = data_users.get_all_photos()
+    photos = data_base.get_all_photos()
     if not photos:
         return None
     photo_list = [p[0] for p in photos]
@@ -41,16 +41,16 @@ async def start_slideshow(message: Message, state: FSMContext):
     last_name = message.from_user.last_name
     user_name = message.from_user.username
 
-    if not data_users.sql_get_user(user_id):
+    if not data_base.sql_get_user(user_id):
         is_admin = user_id in admins
-        data_users.sql_new_user(user_id, first_name, last_name, user_name, is_admin)
-        data_users.update_user_blocked(user_id, 0)
+        data_base.sql_new_user(user_id, first_name, last_name, user_name, is_admin)
+        data_base.update_user_blocked(user_id, 0)
         await message.answer("🦆")
         await message.answer("Чи справжні «Надзвичайні крила»,чи це просто уява художника, залишається загадкою..")
         await message.delete()
     else:
-        data_users.update_restart_count(user_id)
-        data_users.update_user_blocked(user_id, 0)
+        data_base.update_restart_count(user_id)
+        data_base.update_user_blocked(user_id, 0)
         await message.delete()
         wellcome_msg = await message.answer(f"З поверненням, {first_name}!")
         await del_msg(wellcome_msg, 2)
@@ -65,7 +65,7 @@ async def start_slideshow(message: Message, state: FSMContext):
     photo_id = photo_list[index]
 
     # Получаем информацию о первой фотографии для caption
-    photo_info = data_users.execute_query("""
+    photo_info = data_base.execute_query("""
         SELECT p.id, p.added_date, p.caption, 
                u.user_name, u.first_name, u.last_name 
         FROM photos p
@@ -112,7 +112,7 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
     photo_id = photo_list[index]
 
     # Получаем полную информацию о фото из базы данных
-    photo_info = data_users.execute_query("""
+    photo_info = data_base.execute_query("""
         SELECT p.id, p.added_date, p.caption, 
                u.user_name, u.first_name, u.last_name 
         FROM photos p

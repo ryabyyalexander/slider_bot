@@ -1,5 +1,6 @@
 # models.py
 import sqlite3
+from data import name_bot
 
 
 class BotDatabase:
@@ -73,9 +74,9 @@ class BotDatabase:
 
 
 # Инициализация базы данных и создание таблиц
-data_users = BotDatabase('data_slider')
+data_base = BotDatabase(f'{name_bot}')
 
-data_users.execute_query("""CREATE TABLE IF NOT EXISTS users(
+data_base.execute_query("""CREATE TABLE IF NOT EXISTS users(
     user_id INT PRIMARY KEY,
     first_name VARCHAR,
     last_name VARCHAR,
@@ -85,7 +86,7 @@ data_users.execute_query("""CREATE TABLE IF NOT EXISTS users(
     restart_count INT DEFAULT 0,
     user_blocked BOOL DEFAULT 0)""")
 
-data_users.execute_query("""CREATE TABLE IF NOT EXISTS photos(
+data_base.execute_query("""CREATE TABLE IF NOT EXISTS photos(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id TEXT NOT NULL,
     added_by INT NOT NULL,

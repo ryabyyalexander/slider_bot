@@ -4,14 +4,14 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from data import del_msg, admins
 from filters import IsAdmin
-from sql import data_users
+from sql import data_base
 
 router = Router()
 
 
 @router.message(Command("myphotos"))
 async def handle_my_photos(message: Message):
-    photos = data_users.execute_query(
+    photos = data_base.execute_query(
         "SELECT id, file_id FROM photos WHERE added_by = ?",
         (message.from_user.id,)
     ).fetchall()
@@ -42,7 +42,7 @@ async def handle_delete_photo(message: Message):
         # print(f'Пытаемся удалить фото с ID: {photo_id}')   Логирование ID
 
         # Проверяем существование фото перед удалением
-        photo_exists = data_users.execute_query(
+        photo_exists = data_base.execute_query(
             "SELECT 1 FROM photos WHERE id = ?",
             (photo_id,)
         ).fetchone()
@@ -53,7 +53,7 @@ async def handle_delete_photo(message: Message):
             return
 
         # Удаляем фото
-        deleted = data_users.delete_photo(photo_id)
+        deleted = data_base.delete_photo(photo_id)
         # print(f'Результат удаления: {deleted}')   Логирование результата
 
         if deleted:
@@ -75,7 +75,7 @@ async def handle_delete_photo(message: Message):
 
 @router.message(Command("photostats"))
 async def handle_photo_stats(message: Message):
-    count = data_users.get_photo_count()
+    count = data_base.get_photo_count()
     msg = await message.answer(f"📊 У базі знаходиться {count} фотографій.")
     await del_msg(msg, 5)
     await message.delete()
@@ -87,7 +87,7 @@ async def handle_any_photo(message: Message):
     caption = message.caption
 
     try:
-        data_users.add_photo(photo_id, message.from_user.id, caption)
+        data_base.add_photo(photo_id, message.from_user.id, caption)
         msg = await message.answer("✅ Фото успішно додано до бази!")
         await del_msg(msg, 2)
         await message.delete()
