@@ -1,14 +1,11 @@
-name_bot = 'slide_me_bot'
-
+name_bot = 'slider'
 
 MENU_COMMANDS: dict[str, str] = {
-    '/start': 'slider',
-    '/photostats': 'photostats',
-    '/myphotos': 'myphotos',
+    '/start': 'slider'
 }
 
 CYCLE_OPTIONS = [3, 4, 5, 7, 10, 33]
-CYCLE_DEFAULT = 100
+CYCLE_DEFAULT = 33
 SPEED_OPTIONS = [2, 3, 4, 7]
 star = ['☆', '★']
 
@@ -24,8 +21,6 @@ stickers = [
     "CAACAgIAAxkBAAEOI-tn38IKJQRU36PDsAtR-h3k0irqPgACLzgAAu60IUu4z-nAjslEsDYE",
     "CAACAgIAAxkBAAEOI-1n38ImJSA3m_JKCWYSbuvPjDZ3KAACxTYAAkAVsEvsDvdar6VnMTYE",
     "CAACAgIAAxkBAAEOI-9n38JE5av4kUUahnA3x6MqfaFzGwACSTsAAt_OcEgBwB9HkIk4gzYE",
-    "CAACAgIAAxkBAAEOI_Fn38JhY_2JDbcQvkMTzPmw4hb8rAACaQADRA3PF06e1cjIjCI1NgQ",
-    "CAACAgIAAxkBAAEOI_Vn38LN423S81GtilHw4J_2BTjBvQACbAADRA3PF53gPtZ4h5T1NgQ",
     "CAACAgIAAxkBAAEOI_dn38MhakwHVJ-P2tyQsncrTowHYwACwi0AAqzJyUnBUBHnzdLwGTYE",
     "CAACAgIAAxkBAAEOI_ln38M5WB65JT3o19Iw6COny4d5qwACYDAAAvkWyEnfJL2V1ytgZDYE",
     "CAACAgIAAxkBAAEOI_1n38OCdfJEkg9aOj8xM4u7Z7b2YQACoS0AAtVmYEkl_PbF_x_4CDYE"

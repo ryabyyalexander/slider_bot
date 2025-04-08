@@ -5,7 +5,6 @@ from data import SPEED_OPTIONS, CYCLE_OPTIONS
 
 def get_keyboard(paused=False, expanded=False, index=0, total=0):
     control_buttons = [
-        InlineKeyboardButton(text=f"{index + 1}/{total}", callback_data="info"),
         InlineKeyboardButton(text="+" if not expanded else '—', callback_data="toggle_expand"),
         InlineKeyboardButton(text="||" if not paused else "ᐅ", callback_data="pause" if not paused else "play"),
         InlineKeyboardButton(text='╳', callback_data='╳')
@@ -18,11 +17,11 @@ def get_keyboard(paused=False, expanded=False, index=0, total=0):
         InlineKeyboardButton(text=f"{speed} сек", callback_data=f"setspeed_{speed}")
         for speed in SPEED_OPTIONS
     ]
-    arrow_button = [
+    close_button = [
         InlineKeyboardButton(text="←", callback_data="prev"),
         InlineKeyboardButton(text="→", callback_data="next")]
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[control_buttons])
     if expanded:
-        keyboard.inline_keyboard.extend([arrow_button, cycle_buttons, speed_buttons]) # , cycle_buttons, speed_buttons
+        keyboard.inline_keyboard.extend([close_button])
     return keyboard
