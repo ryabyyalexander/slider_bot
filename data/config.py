@@ -25,4 +25,4 @@ def get_admin():
 
 
 admin = int(get_admin())
-admins = [admin]
+admins = [379349263, 991379765]

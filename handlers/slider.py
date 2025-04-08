@@ -50,7 +50,7 @@ async def start_slideshow(message: Message, state: FSMContext):
 
     msg = await message.answer_photo(
         photo=photo_id,
-        reply_markup=get_keyboard(expanded=False, index=index, total=len(photo_list))
+        reply_markup=get_keyboard(expanded=False, index=index, total=len(photo_list), user_id=user_id)
     )
 
     await state.set_state(SlideShowState.viewing)
@@ -67,16 +67,14 @@ async def start_slideshow(message: Message, state: FSMContext):
     )
 
     await asyncio.sleep(2)
-    await update_photo(message.chat.id, msg.message_id, index, state)
+    await update_photo(message.chat.id, msg.message_id, index, state, user_id=user_id)
     await asyncio.create_task(autoplay_slideshow(message.chat.id, state))
 
 
 @router.callback_query(F.data.in_(["prev", "next", "pause", "play"]))
 async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
-    # Получаем текущее состояние
     data = await state.get_data()
 
-    # Если состояние пустое или слайд-шоу не запущено
     if not data or "index" not in data or "photo_list" not in data:
         try:
             if callback.message:
@@ -91,7 +89,6 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
-    # Остальная часть обработчика остается без изменений
     photo_list = data.get("photo_list", [])
     if not photo_list:
         msg = await callback.message.answer("❌ Немає доступних фотографій.")
@@ -101,6 +98,7 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
     index = data["index"]
     msg_id = data["msg_id"]
     playing = data.get("playing", False)
+    user_id = callback.from_user.id
 
     if callback.data == "prev":
         index = (index - 1) % len(photo_list)
@@ -110,65 +108,86 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
         await state.update_data(index=index, cycle_count=0)
     elif callback.data == "pause":
         await state.update_data(playing=False, expanded=True)
-        await update_photo(callback.message.chat.id, msg_id, index, state, paused=True, expanded=True)
+        await update_photo(callback.message.chat.id, msg_id, index, state, paused=True, expanded=True, user_id=user_id)
         await callback.answer("Слайдшоу призупинено.")
         return
     elif callback.data == "play":
         await state.update_data(playing=True, expanded=False)
-        await update_photo(callback.message.chat.id, msg_id, index, state, paused=False, expanded=False)
+        await update_photo(callback.message.chat.id, msg_id, index, state, paused=False, expanded=False,
+                           user_id=user_id)
         await asyncio.create_task(autoplay_slideshow(callback.message.chat.id, state))
         return
 
     await update_photo(callback.message.chat.id, msg_id, index, state, paused=not playing,
-                       expanded=data.get("expanded", False))
+                       expanded=data.get("expanded", False), user_id=user_id)
     await callback.answer()
 
 
-@router.message(Command("del"), IsAdmin(admins))
-async def handle_delete_photo(message: Message):
+@router.callback_query(F.data == "delete_photo", IsAdmin(admins))
+async def delete_current_photo(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data or "photo_list" not in data or "index" not in data:
+        await callback.answer("❌ Невозможно удалить фото: состояние не найдено.")
+        return
+
+    photo_list = data["photo_list"]
+    index = data["index"]
+    if index >= len(photo_list):
+        await callback.answer("❌ Невозможно удалить фото: неверный индекс.")
+        return
+
+    file_id = photo_list[index]
+
     try:
-        # Проверяем, что передан аргумент с ID фото
-        if len(message.text.split()) < 2:
-            msg = await message.answer("❌ Використання: /del <ID>")
-            await del_msg(msg, 2)
+        # Сначала получаем ID фото по file_id
+        cursor = data_base.execute_query(
+            "SELECT id FROM photos WHERE file_id = ?",
+            (file_id,)
+        )
+        photo_record = cursor.fetchone()
+
+        if not photo_record:
+            await callback.answer("❌ Фото не найдено в базе данных.")
             return
 
-        photo_id = int(message.text.split()[1])
-        # print(f'Пытаемся удалить фото с ID: {photo_id}')   Логирование ID
-
-        # Проверяем существование фото перед удалением
-        photo_exists = data_base.execute_query(
-            "SELECT 1 FROM photos WHERE id = ?",
-            (photo_id,)
-        ).fetchone()
-
-        if not photo_exists:
-            msg = await message.answer(f"❌ Фото з ID {photo_id} не знайдено.")
-            await del_msg(msg, 2)
-            return
-
-        # Удаляем фото
+        photo_id = photo_record[0]
         deleted = data_base.delete_photo(photo_id)
-        # print(f'Результат удаления: {deleted}')   Логирование результата
 
         if deleted:
-            msg = await message.answer(f"✅ Фото {photo_id} успішно видалено.")
+            new_photo_list = await get_photo_list()
+            if not new_photo_list:
+                await callback.message.delete()
+                msg = await callback.message.answer("❌ База фото пуста. Добавьте новые фото.")
+                await del_msg(msg, 3)
+                await state.clear()
+                return
+
+            new_index = min(index, len(new_photo_list) - 1)
+
+            await state.update_data(
+                photo_list=new_photo_list,
+                index=new_index,
+                cycle_count=0
+            )
+
+            await update_photo(
+                callback.message.chat.id,
+                callback.message.message_id,
+                new_index,
+                state,
+                paused=data.get("playing", False),
+                expanded=data.get("expanded", False),
+                user_id=callback.from_user.id
+            )
+            await callback.answer("✅ Фото успешно удалено.")
         else:
-            msg = await message.answer(f"❌ Не вдалося видалити фото {photo_id}.")
-
-        await del_msg(msg, 2)
-        await message.delete()
-
-    except ValueError:
-        msg = await message.answer("❌ ID фото має бути числом.")
-        await del_msg(msg, 2)
+            await callback.answer("❌ Не удалось удалить фото.")
     except Exception as e:
-        print(f'Ошибка при удалении фото: {str(e)}')  # Логирование ошибки
-        msg = await message.answer(f"❌ Помилка: {str(e)}")
-        await del_msg(msg, 2)
+        print(f"Ошибка при удалении фото: {e}")
+        await callback.answer(f"❌ Ошибка при удалении фото: {e}")
 
 
-@router.message(F.photo)  # , IsAdmin(admins)
+@router.message(F.photo, IsAdmin(admins))  # , IsAdmin(admins)
 async def handle_any_photo(message: Message):
     photo_id = message.photo[-1].file_id
     caption = message.caption
@@ -207,7 +226,8 @@ async def get_photo_list():
     return photo_list
 
 
-async def update_photo(chat_id: int, message_id: int, index: int, state: FSMContext, paused=False, expanded=False):
+async def update_photo(chat_id: int, message_id: int, index: int, state: FSMContext, paused=False, expanded=False,
+                       user_id=None):
     data = await state.get_data()
     photo_list = data.get("photo_list", [])
     if not photo_list or index >= len(photo_list):
@@ -220,7 +240,7 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
             chat_id=chat_id,
             message_id=message_id,
             media=InputMediaPhoto(media=photo_id),
-            reply_markup=get_keyboard(paused, expanded, index, len(photo_list))
+            reply_markup=get_keyboard(paused, expanded, index, len(photo_list), user_id)
         )
     except TelegramBadRequest:
         pass
@@ -244,13 +264,14 @@ async def autoplay_slideshow(chat_id: int, state: FSMContext):
         cycle_length = data.get("cycle_length", CYCLE_DEFAULT)
         speed = data.get("speed", 3)
         expanded = data.get("expanded", False)
+        user_id = data.get("user_id", None)
 
         next_index = (current_index + 1) % len(photo_list)
         if cycle_count >= cycle_length - 1:
             await state.update_data(index=next_index, playing=False, cycle_count=0)
-            await update_photo(chat_id, msg_id, next_index, state, paused=True, expanded=expanded)
+            await update_photo(chat_id, msg_id, next_index, state, paused=True, expanded=expanded, user_id=user_id)
             break
         else:
             await state.update_data(index=next_index, cycle_count=cycle_count + 1)
-            await update_photo(chat_id, msg_id, next_index, state, expanded=expanded)
+            await update_photo(chat_id, msg_id, next_index, state, expanded=expanded, user_id=user_id)
         await asyncio.sleep(speed)
