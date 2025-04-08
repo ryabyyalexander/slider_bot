@@ -1,13 +1,15 @@
 # "Рефакторинг слайд-шоу: разделение на модули"
 import asyncio
-from random import shuffle, choice
+from random import shuffle
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from aiogram.types import Message, CallbackQuery, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
-from data import bot, del_msg, admins, CYCLE_DEFAULT, stickers
+from data import bot, del_msg, admins, CYCLE_DEFAULT
+from data.lexicon import start_message
 from filters import IsAdmin
+from keyboards import get_keyboard
 from sql import data_base
 from states.states import SlideShowState
 
@@ -24,23 +26,6 @@ async def get_photo_list():
     return photo_list
 
 
-def get_keyboard(paused=False, expanded=False, index=0, total=0):
-    control_buttons = [
-        InlineKeyboardButton(text="||" if not paused else "ᐅ", callback_data="pause" if not paused else "play")
-    ]
-    arrow_button = [
-        InlineKeyboardButton(text=f"{index + 1}/{total}", callback_data="info"),
-        InlineKeyboardButton(text="←", callback_data="prev"),
-        InlineKeyboardButton(text="→", callback_data="next"),
-        InlineKeyboardButton(text='╳', callback_data='╳')
-    ]
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[control_buttons])
-    if expanded or paused:  # Показываем дополнительные кнопки когда expanded=True или paused=True
-        keyboard.inline_keyboard.extend([arrow_button])
-    return keyboard
-
-
 @router.message(F.text == "/start")
 async def start_slideshow(message: Message, state: FSMContext):
     user_id = int(message.from_user.id)
@@ -55,7 +40,7 @@ async def start_slideshow(message: Message, state: FSMContext):
         msg = await message.answer("Якщо думаєш, що все зрозуміло - почекай пару секунд.")
         await message.delete()
         await del_msg(msg, 4)
-        await message.answer("Ти не побачиш тут шаблонів. Ти готовий?")
+        await message.answer(start_message)
     else:
         data_base.update_restart_count(user_id)
         data_base.update_user_blocked(user_id, 0)
@@ -156,10 +141,8 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
         try:
             if callback.message:
                 first_name = callback.from_user.first_name
-                # Получаем количество фото из базы данных
-                # quont = data_base.get_photo_count()
                 msg = await callback.message.answer(
-                    f"Дякуемо за прибирання!\n{first_name}, можете перезапусти слайдер!"
+                    f"Дякуемо за чистоту!\n{first_name}, зараз можете перезапусти слайдер!"
                 )
                 await callback.message.delete()
                 await del_msg(msg, 5)
@@ -194,78 +177,12 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
         await state.update_data(playing=True, expanded=False)
         await update_photo(callback.message.chat.id, msg_id, index, state, paused=False, expanded=False)
         await asyncio.create_task(autoplay_slideshow(callback.message.chat.id, state))
-        await callback.answer("Слайдшоу продовжено.")
         return
 
     await update_photo(callback.message.chat.id, msg_id, index, state, paused=not playing,
                        expanded=data.get("expanded", False))
     await callback.answer()
 
-
-@router.callback_query(F.data.startswith("setspeed_"))
-async def set_speed(callback: CallbackQuery, state: FSMContext):
-    try:
-        new_speed = int(callback.data.split("_")[1])
-    except (IndexError, ValueError):
-        await callback.answer("Неправильне значення швидкості.")
-        return
-
-    await state.update_data(speed=new_speed)
-    msg = await callback.message.answer(f"Швидкість встановлена на {new_speed} сек.")
-    await del_msg(msg, 2)
-
-    data = await state.get_data()
-    await update_photo(
-        callback.message.chat.id,
-        data["msg_id"],
-        data["index"],
-        state,  # Исправлено: передаем state вместо data["state"]
-        paused=not data.get("playing", False),
-        expanded=data.get("expanded", False)
-    )
-
-
-@router.callback_query(F.data.startswith("setcycle_"))
-async def set_cycle_length(callback: CallbackQuery, state: FSMContext):
-    try:
-        new_cycle = int(callback.data.split("_")[1])
-    except (IndexError, ValueError):
-        await callback.answer("Неправильне значення циклу.")
-        return
-
-    await state.update_data(cycle_length=new_cycle, cycle_count=0)
-    msg = await callback.message.answer(f"Цикл встановлено на {new_cycle} фото.")
-    await del_msg(msg, 2)
-
-    data = await state.get_data()
-    await update_photo(
-        callback.message.chat.id,
-        data["msg_id"],
-        data["index"],
-        state,  # Исправлено: передаем state вместо data["state"]
-        paused=not data.get("playing", False),
-        expanded=data.get("expanded", False)
-    )
-
-
-@router.message(Command("myphotos"))
-async def handle_my_photos(message: Message):
-    photos = data_base.execute_query(
-        "SELECT id, file_id FROM photos WHERE added_by = ?",
-        (message.from_user.id,)
-    ).fetchall()
-
-    if not photos:
-        await message.answer("❌ У вас немає доданих фото.")
-        return
-
-    for photo in photos:
-        await message.answer_photo(
-            photo[1],  # file_id
-            caption=f"ID: {photo[0]}"  # id фото
-        )
-
-    await message.delete()
 
 
 @router.message(Command("del"), IsAdmin(admins))
@@ -312,15 +229,7 @@ async def handle_delete_photo(message: Message):
         await del_msg(msg, 2)
 
 
-@router.message(Command("photostats"))
-async def handle_photo_stats(message: Message):
-    count = data_base.get_photo_count()
-    msg = await message.answer(f"📊 У базі знаходиться {count} фотографій.")
-    await del_msg(msg, 5)
-    await message.delete()
-
-
-@router.message(F.photo, IsAdmin(admins))
+@router.message(F.photo) # , IsAdmin(admins)
 async def handle_any_photo(message: Message):
     photo_id = message.photo[-1].file_id
     caption = message.caption
