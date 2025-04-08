@@ -1,4 +1,3 @@
-# "Рефакторинг слайд-шоу: разделение на модули"
 import asyncio
 from random import shuffle
 from aiogram import Router, F
@@ -14,16 +13,6 @@ from sql import data_base
 from states.states import SlideShowState
 
 router = Router()
-
-
-async def get_photo_list():
-    """Получает список фото из базы и перемешивает его"""
-    photos = data_base.get_all_photos()
-    if not photos:
-        return None
-    photo_list = [p[0] for p in photos]
-    shuffle(photo_list)
-    return photo_list
 
 
 @router.message(F.text == "/start")
@@ -82,55 +71,6 @@ async def start_slideshow(message: Message, state: FSMContext):
     await asyncio.create_task(autoplay_slideshow(message.chat.id, state))
 
 
-async def update_photo(chat_id: int, message_id: int, index: int, state: FSMContext, paused=False, expanded=False):
-    data = await state.get_data()
-    photo_list = data.get("photo_list", [])
-    if not photo_list or index >= len(photo_list):
-        return
-
-    photo_id = photo_list[index]
-
-    try:
-        await bot.edit_message_media(
-            chat_id=chat_id,
-            message_id=message_id,
-            media=InputMediaPhoto(media=photo_id),
-            reply_markup=get_keyboard(paused, expanded, index, len(photo_list))
-        )
-    except TelegramBadRequest:
-        pass
-
-
-async def autoplay_slideshow(chat_id: int, state: FSMContext):
-    data = await state.get_data()
-    if data.get("first_photo_shown", False):
-        await state.update_data(first_photo_shown=False)
-        await asyncio.sleep(data.get("speed", 3))
-
-    while (await state.get_data()).get("playing", False):
-        data = await state.get_data()
-        photo_list = data.get("photo_list", [])
-        if not photo_list:
-            break
-
-        current_index = data["index"]
-        msg_id = data["msg_id"]
-        cycle_count = data.get("cycle_count", 0)
-        cycle_length = data.get("cycle_length", CYCLE_DEFAULT)
-        speed = data.get("speed", 3)
-        expanded = data.get("expanded", False)
-
-        next_index = (current_index + 1) % len(photo_list)
-        if cycle_count >= cycle_length - 1:
-            await state.update_data(index=next_index, playing=False, cycle_count=0)
-            await update_photo(chat_id, msg_id, next_index, state, paused=True, expanded=expanded)
-            break
-        else:
-            await state.update_data(index=next_index, cycle_count=cycle_count + 1)
-            await update_photo(chat_id, msg_id, next_index, state, expanded=expanded)
-        await asyncio.sleep(speed)
-
-
 @router.callback_query(F.data.in_(["prev", "next", "pause", "play"]))
 async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
     # Получаем текущее состояние
@@ -184,7 +124,6 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-
 @router.message(Command("del"), IsAdmin(admins))
 async def handle_delete_photo(message: Message):
     try:
@@ -229,7 +168,7 @@ async def handle_delete_photo(message: Message):
         await del_msg(msg, 2)
 
 
-@router.message(F.photo) # , IsAdmin(admins)
+@router.message(F.photo)  # , IsAdmin(admins)
 async def handle_any_photo(message: Message):
     photo_id = message.photo[-1].file_id
     caption = message.caption
@@ -256,3 +195,62 @@ async def process_sl(callback: CallbackQuery, state: FSMContext):
     except TelegramBadRequest:
         await callback.answer("Повідомлення вже видалено або не знайдено.")
     await state.clear()
+
+
+async def get_photo_list():
+    """Получает список фото из базы и перемешивает его"""
+    photos = data_base.get_all_photos()
+    if not photos:
+        return None
+    photo_list = [p[0] for p in photos]
+    shuffle(photo_list)
+    return photo_list
+
+
+async def update_photo(chat_id: int, message_id: int, index: int, state: FSMContext, paused=False, expanded=False):
+    data = await state.get_data()
+    photo_list = data.get("photo_list", [])
+    if not photo_list or index >= len(photo_list):
+        return
+
+    photo_id = photo_list[index]
+
+    try:
+        await bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=message_id,
+            media=InputMediaPhoto(media=photo_id),
+            reply_markup=get_keyboard(paused, expanded, index, len(photo_list))
+        )
+    except TelegramBadRequest:
+        pass
+
+
+async def autoplay_slideshow(chat_id: int, state: FSMContext):
+    data = await state.get_data()
+    if data.get("first_photo_shown", False):
+        await state.update_data(first_photo_shown=False)
+        await asyncio.sleep(data.get("speed", 3))
+
+    while (await state.get_data()).get("playing", False):
+        data = await state.get_data()
+        photo_list = data.get("photo_list", [])
+        if not photo_list:
+            break
+
+        current_index = data["index"]
+        msg_id = data["msg_id"]
+        cycle_count = data.get("cycle_count", 0)
+        cycle_length = data.get("cycle_length", CYCLE_DEFAULT)
+        speed = data.get("speed", 3)
+        expanded = data.get("expanded", False)
+
+        next_index = (current_index + 1) % len(photo_list)
+        if cycle_count >= cycle_length - 1:
+            await state.update_data(index=next_index, playing=False, cycle_count=0)
+            await update_photo(chat_id, msg_id, next_index, state, paused=True, expanded=expanded)
+            break
+        else:
+            await state.update_data(index=next_index, cycle_count=cycle_count + 1)
+            await update_photo(chat_id, msg_id, next_index, state, expanded=expanded)
+        await asyncio.sleep(speed)
