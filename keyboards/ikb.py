@@ -24,5 +24,5 @@ def get_keyboard(paused=False, expanded=False, index=0, total=0):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[control_buttons])
     if expanded:
-        keyboard.inline_keyboard.extend([arrow_button, cycle_buttons, speed_buttons])
+        keyboard.inline_keyboard.extend([arrow_button, cycle_buttons, speed_buttons]) # , cycle_buttons, speed_buttons
     return keyboard

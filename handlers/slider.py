@@ -45,8 +45,9 @@ async def start_slideshow(message: Message, state: FSMContext):
         is_admin = user_id in admins
         data_base.sql_new_user(user_id, first_name, last_name, user_name, is_admin)
         data_base.update_user_blocked(user_id, 0)
-        await message.answer("🦆")
-        await message.answer("Чи справжні «Надзвичайні крила»,чи це просто уява художника, залишається загадкою..")
+        await message.answer("📆")
+        msg = await message.answer("Керування кнопками\nЯкщо бот зависне, закрийте його кнопкою 'x', і перезапустіть")
+        await del_msg(msg, 7)
         await message.delete()
     else:
         data_base.update_restart_count(user_id)
