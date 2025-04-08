@@ -2,10 +2,13 @@
 import asyncio
 from random import shuffle
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 from data import bot, del_msg, admins, CYCLE_DEFAULT
+from data.lexicon import start_message
+from filters import IsAdmin
 from keyboards import get_keyboard
 from sql import data_base
 from states.states import SlideShowState
@@ -23,17 +26,6 @@ async def get_photo_list():
     return photo_list
 
 
-@router.callback_query(F.data == "toggle_expand")
-async def toggle_expand(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    expanded = data.get("expanded", False)
-    expanded = not expanded
-    await state.update_data(expanded=expanded)
-    await update_photo(callback.message.chat.id, data["msg_id"], data["index"], state,
-                       paused=not data.get("playing", False), expanded=expanded)
-    await callback.answer()
-
-
 @router.message(F.text == "/start")
 async def start_slideshow(message: Message, state: FSMContext):
     user_id = int(message.from_user.id)
@@ -45,43 +37,30 @@ async def start_slideshow(message: Message, state: FSMContext):
         is_admin = user_id in admins
         data_base.sql_new_user(user_id, first_name, last_name, user_name, is_admin)
         data_base.update_user_blocked(user_id, 0)
-        await message.answer("📆")
-        msg = await message.answer("Керування кнопками\nЯкщо бот зависне, закрийте його кнопкою 'x', і перезапустіть")
-        await del_msg(msg, 7)
+        msg = await message.answer("Якщо думаєш, що все зрозуміло - почекай пару секунд.")
         await message.delete()
+        await del_msg(msg, 4)
+        await message.answer(start_message)
     else:
         data_base.update_restart_count(user_id)
         data_base.update_user_blocked(user_id, 0)
         await message.delete()
-        wellcome_msg = await message.answer(f"З поверненням, {first_name}!")
-        await del_msg(wellcome_msg, 2)
+        wellcome_msg = await message.answer(f"Стартуемо, {first_name}!")
+        await asyncio.gather(
+            del_msg(wellcome_msg, 3)
+        )
 
     photo_list = await get_photo_list()
     if not photo_list:
-        msg = await message.answer("❌ Немає доступних фотографій. Додайте фото.")
+        msg = await message.answer("Додайте перше фото. Будьте першим.")
         await del_msg(msg, 5)
         return
 
     index = 0
     photo_id = photo_list[index]
 
-    # Получаем информацию о первой фотографии для caption
-    photo_info = data_base.execute_query("""
-        SELECT p.id, p.added_date, p.caption, 
-               u.user_name, u.first_name, u.last_name 
-        FROM photos p
-        JOIN users u ON p.added_by = u.user_id
-        WHERE p.file_id = ?
-    """, (photo_id,)).fetchone()
-
-    # Формируем подпись для первой фотографии
-    first_caption = (
-        f"🆔 {photo_info[0]}"
-    )
-
     msg = await message.answer_photo(
         photo=photo_id,
-        caption=first_caption,
         reply_markup=get_keyboard(expanded=False, index=index, total=len(photo_list))
     )
 
@@ -89,18 +68,17 @@ async def start_slideshow(message: Message, state: FSMContext):
     await state.update_data(
         index=index,
         msg_id=msg.message_id,
-        playing=True,  # Оставляем playing=True, но не запускаем autoplay сразу
+        playing=True,
         cycle_count=0,
         cycle_length=CYCLE_DEFAULT,
         expanded=False,
         photo_list=photo_list,
         speed=3,
-        first_photo_shown=True  # Добавляем флаг, что первое фото показано
+        first_photo_shown=True
     )
 
-    # Не запускаем autoplay сразу, дадим пользователю время увидеть первую фото
-    await asyncio.sleep(2)  # Ждем 3 секунды перед началом автопрокрутки
-    await update_photo(message.chat.id, msg.message_id, index, state)  # Обновляем для consistency
+    await asyncio.sleep(2)
+    await update_photo(message.chat.id, msg.message_id, index, state)
     await asyncio.create_task(autoplay_slideshow(message.chat.id, state))
 
 
@@ -112,28 +90,11 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
 
     photo_id = photo_list[index]
 
-    # Получаем полную информацию о фото из базы данных
-    photo_info = data_base.execute_query("""
-        SELECT p.id, p.added_date, p.caption, 
-               u.user_name, u.first_name, u.last_name 
-        FROM photos p
-        JOIN users u ON p.added_by = u.user_id
-        WHERE p.file_id = ?
-    """, (photo_id,)).fetchone()
-
-    # Формируем подпись с полной информацией
-    caption = (
-        f"🆔 {photo_info[0]}\n"
-        # f"📅     {photo_info[1]}\n"
-        # f"👤     {photo_info[3] or photo_info[4] or photo_info[5]}\n"
-        # f"{photo_info[2] if photo_info[2] else 'caption'}"
-    )
-
     try:
         await bot.edit_message_media(
             chat_id=chat_id,
             message_id=message_id,
-            media=InputMediaPhoto(media=photo_id, caption=caption),
+            media=InputMediaPhoto(media=photo_id),
             reply_markup=get_keyboard(paused, expanded, index, len(photo_list))
         )
     except TelegramBadRequest:
@@ -142,10 +103,9 @@ async def update_photo(chat_id: int, message_id: int, index: int, state: FSMCont
 
 async def autoplay_slideshow(chat_id: int, state: FSMContext):
     data = await state.get_data()
-    # Если это первый запуск, пропускаем первый шаг (чтобы избежать мерцания)
     if data.get("first_photo_shown", False):
         await state.update_data(first_photo_shown=False)
-        await asyncio.sleep(data.get("speed", 3))  # Ждем полный интервал перед сменой
+        await asyncio.sleep(data.get("speed", 3))
 
     while (await state.get_data()).get("playing", False):
         data = await state.get_data()
@@ -173,20 +133,34 @@ async def autoplay_slideshow(chat_id: int, state: FSMContext):
 
 @router.callback_query(F.data.in_(["prev", "next", "pause", "play"]))
 async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
+    # Получаем текущее состояние
     data = await state.get_data()
-    if "index" not in data:
-        msg = await callback.message.answer("❌ Слайдшоу ще не запущено.")
-        await del_msg(msg, 2)
+
+    # Если состояние пустое или слайд-шоу не запущено
+    if not data or "index" not in data or "photo_list" not in data:
+        try:
+            if callback.message:
+                first_name = callback.from_user.first_name
+                msg = await callback.message.answer(
+                    f"Дякуемо за чистоту!\n{first_name}, зараз можете перезапусти слайдер!"
+                )
+                await callback.message.delete()
+                await del_msg(msg, 5)
+        except TelegramBadRequest:
+            await callback.answer("Повідомлення вже видалено або не знайдено.")
+        await state.clear()
         return
 
+    # Остальная часть обработчика остается без изменений
     photo_list = data.get("photo_list", [])
     if not photo_list:
+        msg = await callback.message.answer("❌ Немає доступних фотографій.")
+        await del_msg(msg, 2)
         return
 
     index = data["index"]
     msg_id = data["msg_id"]
     playing = data.get("playing", False)
-    expanded = data.get("expanded", False)
 
     if callback.data == "prev":
         index = (index - 1) % len(photo_list)
@@ -195,64 +169,79 @@ async def slideshow_controls(callback: CallbackQuery, state: FSMContext):
         index = (index + 1) % len(photo_list)
         await state.update_data(index=index, cycle_count=0)
     elif callback.data == "pause":
-        await state.update_data(playing=False)
-        await update_photo(callback.message.chat.id, msg_id, index, state, paused=True, expanded=expanded)
+        await state.update_data(playing=False, expanded=True)
+        await update_photo(callback.message.chat.id, msg_id, index, state, paused=True, expanded=True)
         await callback.answer("Слайдшоу призупинено.")
         return
     elif callback.data == "play":
-        await state.update_data(playing=True, cycle_count=0)
-        await update_photo(callback.message.chat.id, msg_id, index, state, paused=False, expanded=expanded)
+        await state.update_data(playing=True, expanded=False)
+        await update_photo(callback.message.chat.id, msg_id, index, state, paused=False, expanded=False)
         await asyncio.create_task(autoplay_slideshow(callback.message.chat.id, state))
         return
 
-    await update_photo(callback.message.chat.id, msg_id, index, state, paused=not playing, expanded=expanded)
+    await update_photo(callback.message.chat.id, msg_id, index, state, paused=not playing,
+                       expanded=data.get("expanded", False))
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("setspeed_"))
-async def set_speed(callback: CallbackQuery, state: FSMContext):
+
+@router.message(Command("del"), IsAdmin(admins))
+async def handle_delete_photo(message: Message):
     try:
-        new_speed = int(callback.data.split("_")[1])
-    except (IndexError, ValueError):
-        await callback.answer("Неправильне значення швидкості.")
-        return
+        # Проверяем, что передан аргумент с ID фото
+        if len(message.text.split()) < 2:
+            msg = await message.answer("❌ Використання: /del <ID>")
+            await del_msg(msg, 2)
+            return
 
-    await state.update_data(speed=new_speed)
-    msg = await callback.message.answer(f"Швидкість встановлена на {new_speed} сек.")
-    await del_msg(msg, 2)
+        photo_id = int(message.text.split()[1])
+        # print(f'Пытаемся удалить фото с ID: {photo_id}')   Логирование ID
 
-    data = await state.get_data()
-    await update_photo(
-        callback.message.chat.id,
-        data["msg_id"],
-        data["index"],
-        state,  # Исправлено: передаем state вместо data["state"]
-        paused=not data.get("playing", False),
-        expanded=data.get("expanded", False)
-    )
+        # Проверяем существование фото перед удалением
+        photo_exists = data_base.execute_query(
+            "SELECT 1 FROM photos WHERE id = ?",
+            (photo_id,)
+        ).fetchone()
+
+        if not photo_exists:
+            msg = await message.answer(f"❌ Фото з ID {photo_id} не знайдено.")
+            await del_msg(msg, 2)
+            return
+
+        # Удаляем фото
+        deleted = data_base.delete_photo(photo_id)
+        # print(f'Результат удаления: {deleted}')   Логирование результата
+
+        if deleted:
+            msg = await message.answer(f"✅ Фото {photo_id} успішно видалено.")
+        else:
+            msg = await message.answer(f"❌ Не вдалося видалити фото {photo_id}.")
+
+        await del_msg(msg, 2)
+        await message.delete()
+
+    except ValueError:
+        msg = await message.answer("❌ ID фото має бути числом.")
+        await del_msg(msg, 2)
+    except Exception as e:
+        print(f'Ошибка при удалении фото: {str(e)}')  # Логирование ошибки
+        msg = await message.answer(f"❌ Помилка: {str(e)}")
+        await del_msg(msg, 2)
 
 
-@router.callback_query(F.data.startswith("setcycle_"))
-async def set_cycle_length(callback: CallbackQuery, state: FSMContext):
+@router.message(F.photo) # , IsAdmin(admins)
+async def handle_any_photo(message: Message):
+    photo_id = message.photo[-1].file_id
+    caption = message.caption
+
     try:
-        new_cycle = int(callback.data.split("_")[1])
-    except (IndexError, ValueError):
-        await callback.answer("Неправильне значення циклу.")
-        return
-
-    await state.update_data(cycle_length=new_cycle, cycle_count=0)
-    msg = await callback.message.answer(f"Цикл встановлено на {new_cycle} фото.")
-    await del_msg(msg, 2)
-
-    data = await state.get_data()
-    await update_photo(
-        callback.message.chat.id,
-        data["msg_id"],
-        data["index"],
-        state,  # Исправлено: передаем state вместо data["state"]
-        paused=not data.get("playing", False),
-        expanded=data.get("expanded", False)
-    )
+        data_base.add_photo(photo_id, message.from_user.id, caption)
+        msg = await message.answer("✅ Фото успішно додано до бази!")
+        await del_msg(msg, 2)
+        await message.delete()
+    except Exception as e:
+        msg = await message.answer(f"❌ Помилка при додаванні фото: {e}")
+        await del_msg(msg, 2)
 
 
 @router.callback_query(F.data.in_(['╳']))
@@ -261,7 +250,7 @@ async def process_sl(callback: CallbackQuery, state: FSMContext):
     try:
         if callback.message:
             first_name = callback.from_user.first_name
-            msg = await callback.message.answer(f"До зустрічі, {first_name}!")
+            msg = await callback.message.answer(f"Дякую за увагу, {first_name}!")
             await callback.message.delete()
             await del_msg(msg, 2)
     except TelegramBadRequest:
